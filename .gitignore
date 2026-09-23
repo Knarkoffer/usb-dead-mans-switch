@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local IDE and device configuration
+.idea/
+/config.xml
+/sample.txt

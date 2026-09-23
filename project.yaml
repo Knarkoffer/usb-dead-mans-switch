@@ -1,0 +1,26 @@
+id: 483
+title: USB Dead Man's Switch
+status: active
+type: utility
+primary_language: python
+languages:
+  - python
+tags:
+  - windows
+  - usb
+  - workstation-lock
+  - dead-mans-switch
+  - security
+libraries:
+  python:
+    - argparse
+    - subprocess
+    - sys
+    - time
+    - wmi
+    - xmltodict
+    - yattag:Doc
+    - yattag:indent
+github:
+  owner: Knarkoffer
+  repo: usb-dead-mans-switch
