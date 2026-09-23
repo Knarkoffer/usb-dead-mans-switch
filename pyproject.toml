@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "usb-dead-mans-switch"
+version = "1.0.0"
+description = "A Python USB dead man's switch that locks a Windows workstation when its configured USB device is unplugged"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+classifiers = [
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "pywin32",
+    "WMI",
+    "PyYAML",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "ruff",
+]
+
+[project.urls]
+Repository = "https://github.com/Knarkoffer/usb-dead-mans-switch"
+
+[tool.setuptools]
+py-modules = ["usb_dead_mans_switch"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

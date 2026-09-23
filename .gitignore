@@ -219,5 +219,5 @@ __marimo__/
 
 # Local IDE and device configuration
 .idea/
-/config.xml
 /sample.txt
+/config.yaml

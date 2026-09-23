@@ -18,9 +18,7 @@ libraries:
     - sys
     - time
     - wmi
-    - xmltodict
-    - yattag:Doc
-    - yattag:indent
+    - yaml
 github:
   owner: Knarkoffer
   repo: usb-dead-mans-switch

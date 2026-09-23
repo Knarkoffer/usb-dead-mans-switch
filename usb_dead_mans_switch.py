@@ -1,5 +1,4 @@
 #!python3
-# coding: utf-8
 
 """
 ---------------------------------
@@ -28,62 +27,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 
-print("\r")
-print("USB Dead Man's Switch (Project 483)")
-print("Copyright (c) Knarkoffer 2016")
-print("\r")
-
 import argparse
-
-# import lxml.etree
-# import lxml.builder
 import subprocess
 import sys
 import time
-import wmi  # "pip install wmi", requires pywin32, get @ https://sourceforge.net/projects/pywin32/
-import xmltodict
-from yattag import Doc, indent
 
-parser = argparse.ArgumentParser(
-    description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-)
-
-modes = parser.add_mutually_exclusive_group()
-modes.add_argument(
-    "-id",
-    "--idententifyDevice",
-    action="store_true",
-    default=False,
-    help="Helps you identify the device to be used as a Dead man's switch (DMS)",
-)
-modes.add_argument(
-    "-a",
-    "--activate",
-    action="store_true",
-    default=True,
-    help="Activate the monitoring, enabled by default",
-)
-
-modes.add_argument(
-    "--baseline",
-    nargs="?",
-    const="pnp",
-    choices=("pnp", "usb"),
-    help="List newly connected devices and exit (default: pnp; usb uses Win32_USBDevice)",
-)
-
-# -- Convert input arguments to variables
-args = parser.parse_args()
-
-# --idententifyDevice :
-idententifyDevice = args.idententifyDevice
-
-# --idententifyDevice :
-activateMonitoring = args.activate
+import wmi
+import yaml
 
 dMSDevices = []
 
-localWMI = wmi.WMI()
+localWMI = None
 
 connectedDevices = []
 
@@ -115,121 +69,78 @@ def EstablishBaseline(device_type):
 
 
 def CreateKeyfile():
-
+    """Detect newly connected devices and write the YAML configuration."""
     input("Make sure the device is NOT plugged in, then press Enter")
-
-    defaultDevices = []
-
-    for item in localWMI.query("select * from Win32_PnPEntity"):
-
-        deviceName = item.Caption
-        deviceID = item.DeviceID
-
-        defaultDevices.append(deviceName + "|" + deviceID)
-    #
-
+    baseline = {
+        item.DeviceID for item in localWMI.query("select * from Win32_PnPEntity")
+    }
     input("USB baseline established, please insert device, then press Enter")
-
-    global dMSDevices
-    dMSDevices = []
-
+    devices = []
     for item in localWMI.query("select * from Win32_PnPEntity"):
+        device_id = item.DeviceID
+        if (
+            device_id not in baseline
+            and "STORAGE#VOLUME#" not in device_id
+            and "USBSTOR#DISK" not in device_id
+        ):
+            devices.append(
+                {"name": item.Caption or "(unnamed device)", "device_id": device_id}
+            )
 
-        deviceName = item.Caption
-        deviceID = item.DeviceID
-
-        if not str(deviceName + "|" + deviceID) in defaultDevices:
-
-            if not "STORAGE#VOLUME#" in deviceID:
-
-                if not "USBSTOR#DISK" in deviceID:
-
-                    dMSDevices.append(deviceName + "|" + deviceID)
-                #
-            #
-        #
-
-    #
-
-    if not len(dMSDevices) == 0:
-
-        doc, tag, text = Doc().tagtext()
-
-        with tag("config"):
-            for dMSDeviceInfo in dMSDevices:
-
-                dMSDeviceInfo = dMSDeviceInfo.split("|")
-                dMSDeviceName = dMSDeviceInfo[0]
-                dMSDeviceID = dMSDeviceInfo[1]
-
-                # print('Name: ' + str(dMSDeviceName))
-                # print('ID: ' + str(dMSDeviceID))
-
-                with tag("key"):
-                    with tag("Name"):
-                        text(str(dMSDeviceName))
-                    #
-                    with tag("DeviceID"):
-                        text(str(dMSDeviceID))
-                    #
-                #
-                #
-            #
-            # DOn't forget to replace '&amp;' with '&' when reading file
-        #
-        result = indent(
-            doc.getvalue(),
-            indentation="\t",
-            # newline = '\r\n'
-            newline="\n",
-        )
-
-        configFile = open("config.xml", "w")
-        configFile.write(result)
-        configFile.close()
-
-        activateMonitoring = query_yes_no(
-            "Key detection rules created successfully, start monitoring?"
-        )
-
-        if not activateMonitoring:
-            sys.exit("Exiting script")
-        #
-
-    else:
-
+    if not devices:
         sys.exit("Problems detecting your key, exiting script")
 
-    #
+    try:
+        with open("config.yaml", "w", encoding="utf-8") as config_file:
+            yaml.safe_dump(
+                {"devices": devices}, config_file, sort_keys=False, allow_unicode=True
+            )
+    except OSError as exc:
+        sys.exit(f"Cannot write config.yaml: {exc}")
 
-
-#
+    dMSDevices[:] = [device["name"] + "|" + device["device_id"] for device in devices]
+    if not query_yes_no("config.yaml created successfully, start monitoring?"):
+        sys.exit("Exiting script")
 
 
 def ReadKeyfile():
+    """Read and validate the user-owned YAML configuration."""
+    print("Reading config.yaml")
+    try:
+        with open("config.yaml", encoding="utf-8") as config_file:
+            config = yaml.safe_load(config_file)
+    except FileNotFoundError:
+        sys.exit(
+            "config.yaml not found. Copy config.example.yaml to config.yaml "
+            "and enter your device values, or run with -id."
+        )
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        sys.exit(f"Cannot read config.yaml: {exc}")
 
-    print("Reading keyfile")  # XYZZY
+    if not isinstance(config, dict) or set(config) != {"devices"}:
+        sys.exit(
+            "Invalid config.yaml: expected a 'devices' list as the only top-level key."
+        )
+    devices = config["devices"]
+    if not isinstance(devices, list) or not devices:
+        sys.exit("Invalid config.yaml: 'devices' must be a non-empty list.")
 
-    with open("config.xml") as fd:
-
-        doc = xmltodict.parse(fd.read())
-        #
-
-        keyItems = doc["config"]["key"]
-
-        for key in keyItems:
-
-            deviceName = key["Name"]
-            deviceID = key["DeviceID"]
-            deviceID.replace("&amp;", "&")
-
-            dMSDevices.append(deviceName + "|" + deviceID)
-
-        #
-    #
-
-
-#
+    configured = []
+    for index, device in enumerate(devices, start=1):
+        if (
+            not isinstance(device, dict)
+            or set(device) != {"name", "device_id"}
+            or any(
+                not isinstance(device[key], str) or not device[key].strip()
+                for key in ("name", "device_id")
+            )
+        ):
+            sys.exit(
+                f"Invalid config.yaml: device {index} must contain non-empty "
+                "strings for 'name' and 'device_id' only."
+            )
+        configured.append(device["name"] + "|" + device["device_id"])
+    dMSDevices[:] = configured
 
 
 def query_yes_no(question, default="yes"):
@@ -251,7 +162,7 @@ def query_yes_no(question, default="yes"):
     elif default == "no":
         prompt = " [y/N] "
     else:
-        raise ValueError("invalid default answer: '%s'" % default)
+        raise ValueError(f"invalid default answer: '{default}'")
     #
 
     while True:
@@ -314,7 +225,7 @@ def CheckKeyConnected():
 
     for item in localWMI.query("select * from Win32_PnPEntity"):
 
-        deviceName = item.Caption
+        deviceName = item.Caption or "(unnamed device)"
         deviceID = item.DeviceID
 
         # print('deviceName: ' + str(deviceName))
@@ -325,10 +236,6 @@ def CheckKeyConnected():
     #
 
     foundDevices = set(expectedDevices).intersection(connectedDevices)
-
-    for expectedDevice in expectedDevices:
-        # print(expectedDevice)
-        pass
 
     # print('Overlapping devices found: ' + str(foundDevices))#XYZZY
 
@@ -391,9 +298,7 @@ def StartMonitoring():
                 dualOutput("Key is not connected anymore, EXECUTE")
                 # print('LockComp')
                 # print(ShutdownProcess('calc.exe', True))
-                results = ExecuteCommand(
-                    "rundll32.exe user32.dll,LockWorkStation", False
-                )
+                ExecuteCommand("rundll32.exe user32.dll,LockWorkStation", False)
                 deviceWasConnected = False
             else:
                 dualOutput("Key was already recognized as disconnected, do nothing")
@@ -412,37 +317,87 @@ def StartMonitoring():
 #
 
 
-if args.baseline:
-    EstablishBaseline(args.baseline)
-    sys.exit(0)
+def main():
+    global localWMI
 
+    print("\r")
+    print("USB Dead Man's Switch (Project 483)")
+    print("Copyright (c) Knarkoffer 2016")
+    print("\r")
 
-if idententifyDevice:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
-    CreateKeyfile()
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument(
+        "-id",
+        "--identify-device",
+        action="store_true",
+        default=False,
+        help="Helps you identify the device to be used as a Dead man's switch (DMS)",
+    )
+    modes.add_argument(
+        "-a",
+        "--activate",
+        action="store_true",
+        default=True,
+        help="Activate the monitoring, enabled by default",
+    )
 
-#
+    modes.add_argument(
+        "--baseline",
+        nargs="?",
+        const="pnp",
+        choices=("pnp", "usb"),
+        help=(
+            "List newly connected devices and exit "
+            "(default: pnp; usb uses Win32_USBDevice)"
+        ),
+    )
 
-if activateMonitoring:
+    args = parser.parse_args()
 
-    print("Activating monitoring")  # XYZZY
+    identify_device = args.identify_device
 
-    if len(dMSDevices) < 1:
-        print("Need to read keyfile")  # XYZZY
-        ReadKeyfile()
+    activateMonitoring = args.activate
 
-        if not len(dMSDevices) < 1:
-            StartMonitoring()
+    localWMI = wmi.WMI()
+
+    if args.baseline:
+        EstablishBaseline(args.baseline)
+        sys.exit(0)
+
+    if identify_device:
+
+        CreateKeyfile()
+
+    #
+
+    if activateMonitoring:
+
+        print("Activating monitoring")  # XYZZY
+
+        if len(dMSDevices) < 1:
+            print("Need to read keyfile")  # XYZZY
+            ReadKeyfile()
+
+            if not len(dMSDevices) < 1:
+                StartMonitoring()
+            else:
+                sys.exit("Keyfile read, but no devices found in it. Problem!")
+            #
+
         else:
-            sys.exit("Keyfile read, but no devices found in it. Problem!")
+
+            StartMonitoring()
+
+            pass
         #
-
-    else:
-
-        StartMonitoring()
 
         pass
     #
 
-    pass
-#
+
+if __name__ == "__main__":
+    main()

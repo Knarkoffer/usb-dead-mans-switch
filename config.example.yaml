@@ -1,0 +1,6 @@
+# Copy this file to config.yaml and replace both dummy values below.
+# Use --baseline to find the exact device name and ID.
+# Keep device IDs single-quoted so backslashes are preserved.
+devices:
+  - name: 'Example USB device'
+    device_id: 'USB\VID_0000&PID_0000\EXAMPLE_SERIAL'
