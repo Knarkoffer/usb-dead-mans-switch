@@ -35,19 +35,19 @@ import time
 import wmi
 import yaml
 
-dMSDevices = []
+dms_devices = []
 
-localWMI = None
+local_wmi = None
 
-connectedDevices = []
+connected_devices = []
 
-userPrompted = False
-firstRunTime = True
-deviceIsConnected = None
-deviceWasConnected = True
+user_prompted = False
+first_run_time = True
+device_is_connected = None
+device_was_connected = True
 
 
-def EstablishBaseline(device_type):
+def establish_baseline(device_type):
     """Print devices added after an interactive baseline, then return."""
     device_class = {
         "pnp": "Win32_PnPEntity",
@@ -55,10 +55,10 @@ def EstablishBaseline(device_type):
     }[device_type]
     query = f"select * from {device_class}"
     input("Make sure the device is NOT plugged in, then press Enter")
-    baseline = {item.DeviceID for item in localWMI.query(query)}
+    baseline = {item.DeviceID for item in local_wmi.query(query)}
     input("Baseline established; insert the device, then press Enter")
     found = False
-    for item in localWMI.query(query):
+    for item in local_wmi.query(query):
         if item.DeviceID not in baseline:
             print("[New device:]")
             print(item.Caption or "(unnamed device)")
@@ -68,15 +68,15 @@ def EstablishBaseline(device_type):
         print("No new devices detected.")
 
 
-def CreateKeyfile():
+def create_keyfile():
     """Detect newly connected devices and write the YAML configuration."""
     input("Make sure the device is NOT plugged in, then press Enter")
     baseline = {
-        item.DeviceID for item in localWMI.query("select * from Win32_PnPEntity")
+        item.DeviceID for item in local_wmi.query("select * from Win32_PnPEntity")
     }
     input("USB baseline established, please insert device, then press Enter")
     devices = []
-    for item in localWMI.query("select * from Win32_PnPEntity"):
+    for item in local_wmi.query("select * from Win32_PnPEntity"):
         device_id = item.DeviceID
         if (
             device_id not in baseline
@@ -98,12 +98,12 @@ def CreateKeyfile():
     except OSError as exc:
         sys.exit(f"Cannot write config.yaml: {exc}")
 
-    dMSDevices[:] = [device["name"] + "|" + device["device_id"] for device in devices]
+    dms_devices[:] = [device["name"] + "|" + device["device_id"] for device in devices]
     if not query_yes_no("config.yaml created successfully, start monitoring?"):
         sys.exit("Exiting script")
 
 
-def ReadKeyfile():
+def read_keyfile():
     """Read and validate the user-owned YAML configuration."""
     print("Reading config.yaml")
     try:
@@ -140,7 +140,7 @@ def ReadKeyfile():
                 "strings for 'name' and 'device_id' only."
             )
         configured.append(device["name"] + "|" + device["device_id"])
-    dMSDevices[:] = configured
+    dms_devices[:] = configured
 
 
 def query_yes_no(question, default="yes"):
@@ -163,7 +163,6 @@ def query_yes_no(question, default="yes"):
         prompt = " [y/N] "
     else:
         raise ValueError(f"invalid default answer: '{default}'")
-    #
 
     while True:
         sys.stdout.write(question + prompt)
@@ -175,150 +174,115 @@ def query_yes_no(question, default="yes"):
             return valid[choice]
         else:
             sys.stdout.write("Please respond with 'yes' or 'no' (or 'y' or 'n').\n")
-        #
-    #
 
 
-#
-
-
-def ShutdownProcess(processName, returnOutput):
+def shutdown_process(process_name, return_output):
 
     results = subprocess.Popen(
-        "taskkill /IM " + str(processName) + " /F", shell=True, stdout=subprocess.PIPE
+        "taskkill /IM " + str(process_name) + " /F", shell=True, stdout=subprocess.PIPE
     ).stdout.read()
 
-    if returnOutput:
+    if return_output:
         results = results.decode()
     else:
         results = "Command executed!"
-    #
 
     return results
 
 
-#
-
-
-def ExecuteCommand(stringCommand, returnOutput):
+def execute_command(string_command, return_output):
 
     results = subprocess.Popen(
-        stringCommand, shell=True, stdout=subprocess.PIPE
+        string_command, shell=True, stdout=subprocess.PIPE
     ).stdout.read()
 
-    if returnOutput:
+    if return_output:
         results = results.decode()
     else:
         results = "Command executed!"
-    #
 
     return results
 
 
-#
+def check_key_connected():
 
+    expected_devices = dms_devices
+    connected_devices = []
 
-def CheckKeyConnected():
+    for item in local_wmi.query("select * from Win32_PnPEntity"):
 
-    expectedDevices = dMSDevices
-    connectedDevices = []
+        device_name = item.Caption or "(unnamed device)"
+        device_id = item.DeviceID
 
-    for item in localWMI.query("select * from Win32_PnPEntity"):
-
-        deviceName = item.Caption or "(unnamed device)"
-        deviceID = item.DeviceID
-
-        # print('deviceName: ' + str(deviceName))
-        # print('deviceID: ' + str(deviceID))
-
-        connectedDevices.append(deviceName + "|" + deviceID)
+        connected_devices.append(device_name + "|" + device_id)
         pass
-    #
 
-    foundDevices = set(expectedDevices).intersection(connectedDevices)
+    found_devices = set(expected_devices).intersection(connected_devices)
 
-    # print('Overlapping devices found: ' + str(foundDevices))#XYZZY
+    if len(found_devices) == len(expected_devices):
+        device_connected = True
 
-    if len(foundDevices) == len(expectedDevices):
-        deviceConnected = True
-        # print('All devices connected')
     else:
-        deviceConnected = False
-        # print('Not all devices connected')
+        device_connected = False
 
-    #
-    return deviceConnected
+    return device_connected
 
 
-#
+def dual_output(information_string):
+
+    time_stamp = time.strftime("%H:%M:%S")
+
+    print("[" + time_stamp + "] " + information_string)
 
 
-def dualOutput(informationString):
+def start_monitoring():
 
-    # timeStamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    timeStamp = time.strftime("%H:%M:%S")
-
-    print("[" + timeStamp + "] " + informationString)
-
-
-#
-
-
-def StartMonitoring():
-
-    global firstRunTime
-    global deviceIsConnected
-    global deviceWasConnected
-    global userPrompted
+    global first_run_time
+    global device_is_connected
+    global device_was_connected
+    global user_prompted
 
     while True:
 
-        if firstRunTime:
-            while firstRunTime:
+        if first_run_time:
+            while first_run_time:
 
-                deviceIsConnected = CheckKeyConnected()
-                if not deviceIsConnected:
-                    if not userPrompted:
-                        dualOutput("Please connect the key")
-                        userPrompted = True
+                device_is_connected = check_key_connected()
+                if not device_is_connected:
+                    if not user_prompted:
+                        dual_output("Please connect the key")
+                        user_prompted = True
                     else:
                         pass
-                    #
-                else:
-                    dualOutput("Key connected, initializing")
-                    firstRunTime = False
-                time.sleep(5)
-            #
-        else:
-            deviceIsConnected = CheckKeyConnected()
-        #
 
-        if not deviceIsConnected:
-            if deviceWasConnected:
-                dualOutput("Key is not connected anymore, EXECUTE")
-                # print('LockComp')
-                # print(ShutdownProcess('calc.exe', True))
-                ExecuteCommand("rundll32.exe user32.dll,LockWorkStation", False)
-                deviceWasConnected = False
-            else:
-                dualOutput("Key was already recognized as disconnected, do nothing")
+                else:
+                    dual_output("Key connected, initializing")
+                    first_run_time = False
+                time.sleep(5)
+
         else:
-            if firstRunTime:
-                dualOutput("Key is connected, do nothing")
+            device_is_connected = check_key_connected()
+
+        if not device_is_connected:
+            if device_was_connected:
+                dual_output("Key is not connected anymore, EXECUTE")
+
+                execute_command("rundll32.exe user32.dll,LockWorkStation", False)
+                device_was_connected = False
             else:
-                dualOutput("Key reconnected, do nothing")
-            deviceWasConnected = True
-        #
+                dual_output("Key was already recognized as disconnected, do nothing")
+        else:
+            if first_run_time:
+                dual_output("Key is connected, do nothing")
+            else:
+                dual_output("Key reconnected, do nothing")
+            device_was_connected = True
 
         time.sleep(4)
-    #
-
-
-#
 
 
 def main():
-    global localWMI
+    global local_wmi
 
     print("\r")
     print("USB Dead Man's Switch (Project 483)")
@@ -360,43 +324,38 @@ def main():
 
     identify_device = args.identify_device
 
-    activateMonitoring = args.activate
+    activate_monitoring = args.activate
 
-    localWMI = wmi.WMI()
+    local_wmi = wmi.WMI()
 
     if args.baseline:
-        EstablishBaseline(args.baseline)
+        establish_baseline(args.baseline)
         sys.exit(0)
 
     if identify_device:
 
-        CreateKeyfile()
+        create_keyfile()
 
-    #
+    if activate_monitoring:
 
-    if activateMonitoring:
+        print("Activating monitoring")
 
-        print("Activating monitoring")  # XYZZY
+        if len(dms_devices) < 1:
+            print("Need to read keyfile")
+            read_keyfile()
 
-        if len(dMSDevices) < 1:
-            print("Need to read keyfile")  # XYZZY
-            ReadKeyfile()
-
-            if not len(dMSDevices) < 1:
-                StartMonitoring()
+            if not len(dms_devices) < 1:
+                start_monitoring()
             else:
                 sys.exit("Keyfile read, but no devices found in it. Problem!")
-            #
 
         else:
 
-            StartMonitoring()
+            start_monitoring()
 
             pass
-        #
 
         pass
-    #
 
 
 if __name__ == "__main__":
