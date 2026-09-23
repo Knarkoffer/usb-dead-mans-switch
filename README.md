@@ -85,5 +85,6 @@ runtime validation on the intended Windows machine.
 
 ## License
 
-The repository includes an MIT license, while the main script retains its original
-GPL-3.0-or-later notice. These differing notices have not yet been reconciled.
+Licensed under the GNU General Public License, version 3 or later
+(`GPL-3.0-or-later`), matching the notice in the source code. See [LICENSE](LICENSE)
+for the full license text.
